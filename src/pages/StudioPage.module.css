@@ -1,0 +1,338 @@
+/* ── Page shell ── */
+.page {
+  height: 100svh;
+  display: flex;
+  flex-direction: column;
+  background: #080808;
+  overflow: hidden;
+}
+
+/* ── Nav ── */
+.nav {
+  height: 60px;
+  display: flex;
+  align-items: center;
+  padding: 0 28px;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.12);
+  background: rgba(8, 8, 8, 0.95);
+  backdrop-filter: blur(12px);
+  flex-shrink: 0;
+  gap: 16px;
+  z-index: 10;
+}
+
+.logo {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  background: linear-gradient(135deg, #d4af37 0%, #f5e27a 50%, #c9920a 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.navTitle {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: #4a4540;
+  letter-spacing: 0.06em;
+}
+
+.backBtn {
+  background: transparent;
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  border-radius: 7px;
+  color: #5a5550;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.backBtn:hover {
+  border-color: rgba(212, 175, 55, 0.5);
+  color: #d4af37;
+}
+
+/* ── Body ── */
+.body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ── Isometric viewport ── */
+.viewport {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+  /* Subtle radial gradient around the room */
+  background:
+    radial-gradient(ellipse 60% 50% at 50% 55%, rgba(212, 175, 55, 0.04) 0%, transparent 70%);
+}
+
+/* Off-screen element used as the custom drag ghost */
+.dragGhost {
+  position: fixed;
+  top: -120px;
+  left: -120px;
+  width: 36px;
+  height: 36px;
+  background: rgba(212, 175, 55, 0.15);
+  border: 1px solid rgba(212, 175, 55, 0.5);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #d4af37;
+  pointer-events: none;
+}
+
+.dragGhost svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* ── Isometric room ── */
+.room {
+  position: relative;
+  width: 440px;
+  height: 440px;
+  transform-style: preserve-3d;
+  transform: rotateX(55deg) rotateZ(45deg);
+}
+
+/* Floor: 10×10 tile grid in the XY plane */
+.floor {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  grid-template-rows: repeat(10, 1fr);
+  gap: 1px;
+  background: rgba(212, 175, 55, 0.09);   /* gap colour = faint gold grid lines */
+  outline: 1px solid rgba(212, 175, 55, 0.14);
+}
+
+.tile {
+  position: relative;
+  background: #111110;
+  transition: background 0.1s;
+}
+
+.tileAlt {
+  background: #171614;
+}
+
+/* Tile highlighted while a furniture item is dragged over it */
+.tileOver {
+  background: rgba(212, 175, 55, 0.18) !important;
+  outline: 1px solid rgba(212, 175, 55, 0.55);
+  outline-offset: -1px;
+  z-index: 1;
+}
+
+/* Tile that already has a placed item */
+.tileOccupied {
+  cursor: default;
+}
+
+/* ── Placed furniture item ── */
+.placedItem {
+  position: absolute;
+  inset: 3px;
+  background: rgba(212, 175, 55, 0.1);
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.placedItem:hover {
+  background: rgba(200, 50, 50, 0.18);
+  border-color: rgba(200, 80, 80, 0.5);
+}
+
+.placedItem:hover .placedIcon {
+  opacity: 0;
+}
+
+.placedItem:hover .removeHint {
+  opacity: 1;
+}
+
+.placedIcon {
+  color: #d4af37;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.15s;
+}
+
+.placedIcon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.removeHint {
+  position: absolute;
+  font-size: 10px;
+  color: #e07070;
+  opacity: 0;
+  transition: opacity 0.15s;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* Back wall – folds up from the top edge of the floor (y = 0)  */
+.wallBack {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 440px;
+  height: 190px;
+  transform-origin: top center;
+  transform: rotateX(90deg);
+  background:
+    repeating-linear-gradient(
+      180deg,
+      transparent 0px,
+      transparent 44px,
+      rgba(212, 175, 55, 0.035) 45px
+    ),
+    linear-gradient(180deg, #1a1916 0%, #0d0d0c 100%);
+  border-bottom: 1px solid rgba(212, 175, 55, 0.16);
+  border-right:  1px solid rgba(212, 175, 55, 0.08);
+}
+
+/* Left wall – folds out from the left edge of the floor (x = 0) */
+.wallLeft {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 190px;
+  height: 440px;
+  transform-origin: left center;
+  transform: rotateY(-90deg);
+  background:
+    repeating-linear-gradient(
+      180deg,
+      transparent 0px,
+      transparent 44px,
+      rgba(212, 175, 55, 0.025) 45px
+    ),
+    linear-gradient(90deg, #161614 0%, #0d0d0c 100%);
+  border-bottom: 1px solid rgba(212, 175, 55, 0.12);
+  border-right:  1px solid rgba(212, 175, 55, 0.08);
+}
+
+/* ── Toolbar ── */
+.toolbar {
+  width: 210px;
+  flex-shrink: 0;
+  border-left: 1px solid rgba(212, 175, 55, 0.1);
+  background: #0b0b0a;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 14px 20px;
+  gap: 0;
+  overflow-y: auto;
+}
+
+.toolbarHeading {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #3e3a36;
+  margin: 0 0 4px;
+  padding: 0 8px;
+}
+
+.toolbarSub {
+  font-size: 11px;
+  color: #2e2b27;
+  margin: 0 0 14px;
+  padding: 0 8px;
+  letter-spacing: 0.03em;
+}
+
+.items {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 10px 12px;
+  background: transparent;
+  border: 1px solid rgba(212, 175, 55, 0.08);
+  border-radius: 8px;
+  cursor: grab;
+  transition: background 0.18s, border-color 0.18s, color 0.18s, opacity 0.18s;
+  text-align: left;
+  color: #5a5450;
+  user-select: none;
+}
+
+.item:hover {
+  background: rgba(212, 175, 55, 0.05);
+  border-color: rgba(212, 175, 55, 0.22);
+  color: #a09060;
+}
+
+.item:active {
+  cursor: grabbing;
+}
+
+/* Dim the source item while it's being dragged */
+.itemDragging {
+  opacity: 0.35;
+  border-color: rgba(212, 175, 55, 0.2);
+}
+
+.itemIcon {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.itemIcon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.itemLabel {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.dragHandle {
+  font-size: 14px;
+  color: #2e2b27;
+  line-height: 1;
+  pointer-events: none;
+}
