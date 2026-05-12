@@ -3,6 +3,7 @@ import { supabase } from './lib/supabase'
 import AuthPage from './pages/AuthPage'
 import HomePage from './pages/HomePage'
 import StudioPage from './pages/StudioPage'
+import CharacterCreator from './pages/CharacterCreator'
 
 export default function App() {
   const [session, setSession] = useState(undefined)
@@ -24,7 +25,14 @@ export default function App() {
   if (session === undefined) return null
   if (!session) return <AuthPage />
 
-  if (page === 'studio') return <StudioPage onBack={() => setPage('home')} />
+  if (page === 'studio')    return <StudioPage onBack={() => setPage('home')} user={session.user} />
+  if (page === 'character') return <CharacterCreator onBack={() => setPage('home')} />
 
-  return <HomePage user={session.user} onEnterStudio={() => setPage('studio')} />
+  return (
+    <HomePage
+      user={session.user}
+      onEnterStudio={() => setPage('studio')}
+      onEnterCharacter={() => setPage('character')}
+    />
+  )
 }

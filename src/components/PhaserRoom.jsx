@@ -1,5 +1,6 @@
 import Phaser from 'phaser'
 import { useEffect, useRef } from 'react'
+import { supabase } from '../lib/supabase'
 
 // ── Layout constants ───────────────────────────────────────────────────────────
 const GRID   = 10
@@ -173,11 +174,35 @@ function drawStaticRoom(g, ox, oy) {
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
-export default function PhaserRoom() {
+export default function PhaserRoom({ userId }) {
   const containerRef   = useRef(null)
   const placedItemsRef = useRef({})   // "col,row" → furnitureId
   const hoverTileRef   = useRef(null) // { col, row } | null
+  const redrawRef      = useRef(null) // () => void — set once scene is ready
+  const saveTimerRef   = useRef(null) // debounce handle
+  const userIdRef      = useRef(userId)
 
+  // Keep userIdRef current if userId changes (e.g. late hydration)
+  useEffect(() => { userIdRef.current = userId }, [userId])
+
+  // ── Load saved layout on mount (or when userId arrives) ────────────────────
+  useEffect(() => {
+    if (!userId) return
+    supabase
+      .from('rooms')
+      .select('layout')
+      .eq('user_id', userId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) { console.error('load layout:', error); return }
+        if (data?.layout && typeof data.layout === 'object') {
+          placedItemsRef.current = data.layout
+          redrawRef.current?.()
+        }
+      })
+  }, [userId])
+
+  // ── Phaser game ─────────────────────────────────────────────────────────────
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
@@ -188,6 +213,21 @@ export default function PhaserRoom() {
     const roomScreenH = WALL_H + (GRID - 1) * TILE_H
     const ox = W / 2
     const oy = (H - roomScreenH) / 2 + WALL_H
+
+    function scheduleSave() {
+      clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = setTimeout(async () => {
+        const uid = userIdRef.current
+        if (!uid) return
+        const { error } = await supabase
+          .from('rooms')
+          .upsert(
+            { user_id: uid, layout: placedItemsRef.current, updated_at: new Date().toISOString() },
+            { onConflict: 'user_id' }
+          )
+        if (error) console.error('save layout:', error)
+      }, 1000)
+    }
 
     class RoomScene extends Phaser.Scene {
       create() {
@@ -225,12 +265,13 @@ export default function PhaserRoom() {
             })
         }
 
+        // Expose redraw so the load effect can call it after data arrives
+        redrawRef.current = redraw
         redraw()
 
         // ── Canvas events ──────────────────────────────────────────────────
         const canvas = this.sys.game.canvas
 
-        // Accept furniture drags
         canvas.addEventListener('dragenter', e => {
           if (e.dataTransfer.types.includes('furnitureid')) e.preventDefault()
         })
@@ -263,6 +304,7 @@ export default function PhaserRoom() {
           }
           hoverTileRef.current = null
           redraw()
+          scheduleSave()
         })
 
         // Click an occupied tile to remove its item
@@ -274,6 +316,7 @@ export default function PhaserRoom() {
           if (placedItemsRef.current[key]) {
             delete placedItemsRef.current[key]
             redraw()
+            scheduleSave()
           }
         })
 
@@ -300,7 +343,10 @@ export default function PhaserRoom() {
       banner:      false,
     })
 
-    return () => game.destroy(true)
+    return () => {
+      clearTimeout(saveTimerRef.current)
+      game.destroy(true)
+    }
   }, [])
 
   return (

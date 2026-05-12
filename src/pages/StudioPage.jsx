@@ -1,6 +1,8 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import styles from './StudioPage.module.css'
 import PhaserRoom from '../components/PhaserRoom'
+import MusicPlayer from '../components/MusicPlayer'
+import { supabase } from '../lib/supabase'
 
 const FURNITURE = [
   { id: 'turntable', label: 'Turntable' },
@@ -13,9 +15,54 @@ const FURNITURE = [
   { id: 'neon',      label: 'Neon Sign' },
 ]
 
-export default function StudioPage({ onBack }) {
+const GENRES = [
+  'Hip Hop', 'R&B', 'Electronic', 'House', 'Techno', 'Drum & Bass',
+  'Afrobeats', 'Reggae', 'Reggaeton', 'Latin', 'Pop', 'Rock',
+  'Indie', 'Jazz', 'Soul', 'Lo-Fi', 'Ambient',
+]
+
+export default function StudioPage({ onBack, user }) {
   const [draggingId, setDraggingId] = useState(null)
+  const [vibe,       setVibe]       = useState(null)
+  const [vibeOpen,   setVibeOpen]   = useState(false)
   const dragImageRef = useRef(null)
+  const vibeWrapRef  = useRef(null)
+
+  /* ── Load saved vibe ── */
+  useEffect(() => {
+    if (!user?.id) return
+    supabase
+      .from('rooms')
+      .select('vibe')
+      .eq('user_id', user.id)
+      .maybeSingle()
+      .then(({ data }) => { if (data?.vibe) setVibe(data.vibe) })
+  }, [user?.id])
+
+  /* ── Close dropdown on outside click ── */
+  useEffect(() => {
+    if (!vibeOpen) return
+    function onDown(e) {
+      if (vibeWrapRef.current && !vibeWrapRef.current.contains(e.target)) {
+        setVibeOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [vibeOpen])
+
+  async function selectVibe(genre) {
+    setVibe(genre)
+    setVibeOpen(false)
+    if (!user?.id) return
+    const { error } = await supabase
+      .from('rooms')
+      .upsert(
+        { user_id: user.id, vibe: genre, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id' }
+      )
+    if (error) console.error('save vibe:', error)
+  }
 
   /* ── Toolbar drag handlers ── */
   function handleDragStart(e, id) {
@@ -23,7 +70,6 @@ export default function StudioPage({ onBack }) {
     e.dataTransfer.setData('furnitureId', id)
     setDraggingId(id)
 
-    // Use a small off-screen element as the drag ghost so it stays crisp
     const ghost = dragImageRef.current
     ghost.innerHTML = ''
     const svg = e.currentTarget.querySelector('svg')
@@ -31,9 +77,7 @@ export default function StudioPage({ onBack }) {
     e.dataTransfer.setDragImage(ghost, 18, 18)
   }
 
-  function handleDragEnd() {
-    setDraggingId(null)
-  }
+  function handleDragEnd() { setDraggingId(null) }
 
   return (
     <div className={styles.page}>
@@ -42,6 +86,47 @@ export default function StudioPage({ onBack }) {
 
       <nav className={styles.nav}>
         <span className={styles.logo}>AUX</span>
+
+        {/* ── Vibe selector ── */}
+        <div className={styles.vibeWrap} ref={vibeWrapRef}>
+          <button
+            className={`${styles.vibeBtn} ${vibeOpen ? styles.vibeBtnOpen : ''}`}
+            onClick={() => setVibeOpen(o => !o)}
+          >
+            <svg className={styles.vibeBtnIcon} viewBox="0 0 16 16" fill="none">
+              <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.25" />
+              <path d="M5 8.5 Q8 5 11 8.5" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" fill="none" />
+              <circle cx="8" cy="10" r="1.25" fill="currentColor" />
+            </svg>
+            Set Vibe
+          </button>
+
+          {vibeOpen && (
+            <div className={styles.vibeMenu}>
+              <p className={styles.vibeMenuLabel}>Select a vibe</p>
+              {GENRES.map(g => (
+                <button
+                  key={g}
+                  className={`${styles.vibeItem} ${vibe === g ? styles.vibeItemActive : ''}`}
+                  onClick={() => selectVibe(g)}
+                >
+                  <span className={styles.vibeItemDot}>
+                    {vibe === g ? '●' : '○'}
+                  </span>
+                  {g}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {vibe && (
+          <span className={styles.vibeTag}>
+            <span className={styles.vibeTagDot}>●</span>
+            {vibe}
+          </span>
+        )}
+
         <span className={styles.navTitle}>My Studio</span>
         <button className={styles.backBtn} onClick={onBack}>← Back</button>
       </nav>
@@ -49,7 +134,7 @@ export default function StudioPage({ onBack }) {
       <div className={styles.body}>
         {/* ── Isometric viewport ── */}
         <div className={styles.viewport}>
-          <PhaserRoom />
+          <PhaserRoom userId={user?.id} />
         </div>
 
         {/* ── Furniture toolbar ── */}
@@ -75,6 +160,8 @@ export default function StudioPage({ onBack }) {
           </div>
         </aside>
       </div>
+
+      <MusicPlayer vibe={vibe} userId={user?.id} />
     </div>
   )
 }

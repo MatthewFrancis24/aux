@@ -1,7 +1,7 @@
 import { supabase } from '../lib/supabase'
 import styles from './HomePage.module.css'
 
-export default function HomePage({ user, onEnterStudio }) {
+export default function HomePage({ user, onEnterStudio, onEnterCharacter }) {
   return (
     <div className={styles.page}>
 
@@ -32,6 +32,18 @@ export default function HomePage({ user, onEnterStudio }) {
             <h2 className={styles.cardTitle}>My Studio</h2>
             <p className={styles.cardDesc}>Build and customize your room</p>
             <button className={styles.cardBtn} onClick={onEnterStudio}>Enter Studio</button>
+          </div>
+
+          <div className={styles.card}>
+            <div className={styles.cardIcon}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="8" r="4" />
+                <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+              </svg>
+            </div>
+            <h2 className={styles.cardTitle}>My Character</h2>
+            <p className={styles.cardDesc}>Design your avatar</p>
+            <button className={styles.cardBtn} onClick={onEnterCharacter}>Customise</button>
           </div>
 
           <div className={styles.card}>

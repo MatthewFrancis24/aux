@@ -18,7 +18,7 @@
   backdrop-filter: blur(12px);
   flex-shrink: 0;
   gap: 16px;
-  z-index: 10;
+  z-index: 100;
 }
 
 .logo {
@@ -335,4 +335,135 @@
   color: #2e2b27;
   line-height: 1;
   pointer-events: none;
+}
+
+/* ── Vibe selector ── */
+.vibeWrap {
+  position: relative;
+}
+
+.vibeBtn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: transparent;
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  border-radius: 7px;
+  color: #6a6058;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 6px 13px 6px 10px;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+  white-space: nowrap;
+}
+
+.vibeBtn:hover,
+.vibeBtnOpen {
+  border-color: rgba(212, 175, 55, 0.45);
+  color: #c9a835;
+  background: rgba(212, 175, 55, 0.05);
+}
+
+.vibeBtnIcon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: inherit;
+}
+
+/* Dropdown panel */
+.vibeMenu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 200;
+  width: 190px;
+  background: #0e0d0c;
+  border: 1px solid rgba(212, 175, 55, 0.18);
+  border-radius: 10px;
+  padding: 8px 6px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.7),
+    0 2px  8px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(212, 175, 55, 0.06);
+  max-height: 340px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(212, 175, 55, 0.15) transparent;
+}
+
+.vibeMenuLabel {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #2e2b27;
+  margin: 2px 0 6px;
+  padding: 0 8px;
+}
+
+.vibeItem {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #5a5450;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.vibeItem:hover {
+  background: rgba(212, 175, 55, 0.07);
+  color: #b8933a;
+}
+
+.vibeItemActive {
+  color: #d4af37;
+}
+
+.vibeItemActive:hover {
+  background: rgba(212, 175, 55, 0.1);
+  color: #e0c060;
+}
+
+.vibeItemDot {
+  font-size: 8px;
+  flex-shrink: 0;
+  color: inherit;
+  opacity: 0.7;
+}
+
+.vibeItemActive .vibeItemDot {
+  opacity: 1;
+}
+
+/* Active vibe tag in nav bar */
+.vibeTag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #b8933a;
+  background: rgba(212, 175, 55, 0.08);
+  border: 1px solid rgba(212, 175, 55, 0.18);
+  border-radius: 20px;
+  padding: 4px 11px 4px 8px;
+  white-space: nowrap;
+}
+
+.vibeTagDot {
+  font-size: 7px;
+  color: #d4af37;
+  flex-shrink: 0;
 }
