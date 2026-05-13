@@ -230,10 +230,96 @@ export default function PhaserRoom({ userId }) {
     }
 
     class RoomScene extends Phaser.Scene {
+      preload() {
+        this.load.spritesheet('char-idle', '/Character0_Idle.png', {
+          frameWidth: 460, frameHeight: 460,
+        })
+        this.load.spritesheet('char-walk', '/Character0_Walk.png', {
+          frameWidth: 460, frameHeight: 460,
+        })
+      }
+
       create() {
         // ── Static room layer (drawn once) ─────────────────────────────────
         const roomG = this.add.graphics()
         drawStaticRoom(roomG, ox, oy)
+
+        // ── Character sprite & click-to-move ───────────────────────────────
+        //
+        // Sprite sheets are 460×460 frames, 5 direction rows.
+        // Grid movement → screen direction:
+        //   dCol+1,dRow+1 → S (straight down)   dCol-1,dRow-1 → N (straight up)
+        //   dCol 0,dRow+1 → SW                  dCol 0,dRow-1 → NE (mirror row 3)
+        //   dCol-1,dRow+1 → W                   dCol+1,dRow-1 → E  (mirror row 2)
+        //   dCol-1,dRow 0 → NW                  dCol+1,dRow 0 → SE (mirror row 1)
+        const DIR_MAP = {
+          ' 1, 1': { row: 0, flip: false }, // S
+          ' 0, 1': { row: 1, flip: false }, // SW
+          '-1, 1': { row: 2, flip: false }, // W
+          '-1, 0': { row: 3, flip: false }, // NW
+          '-1,-1': { row: 4, flip: false }, // N
+          ' 0,-1': { row: 3, flip: true  }, // NE
+          ' 1,-1': { row: 2, flip: true  }, // E
+          ' 1, 0': { row: 1, flip: true  }, // SE
+        }
+
+        // Idle anims: 8 frames per row (3680px wide ÷ 460 = 8 cols)
+        for (let d = 0; d < 5; d++) {
+          this.anims.create({
+            key: `idle-${d}`,
+            frames: this.anims.generateFrameNumbers('char-idle', {
+              start: d * 8, end: d * 8 + 7,
+            }),
+            frameRate: 6, repeat: -1,
+          })
+        }
+        // Walk anims: 6 frames per row (2760px wide ÷ 460 = 6 cols)
+        for (let d = 0; d < 5; d++) {
+          this.anims.create({
+            key: `walk-${d}`,
+            frames: this.anims.generateFrameNumbers('char-walk', {
+              start: d * 6, end: d * 6 + 5,
+            }),
+            frameRate: 10, repeat: -1,
+          })
+        }
+
+        let charCol = 5, charRow = 5
+        let targetCol = 5, targetRow = 5
+        let isWalking = false
+        let lastRow = 0, lastFlip = false
+
+        const charScale = (TILE_W * 1.4) / 460
+        const { x: charStartX, y: charStartY } = tileCenter(charCol, charRow, ox, oy)
+        const char = this.add.sprite(charStartX, charStartY, 'char-idle')
+        char.setOrigin(0.5, 0.88)
+        char.setScale(charScale)
+        char.play('idle-0')
+
+        const walkStep = () => {
+          if (charCol === targetCol && charRow === targetRow) {
+            isWalking = false
+            char.setFlipX(lastFlip)
+            char.play(`idle-${lastRow}`, true)
+            return
+          }
+          isWalking = true
+          const dCol = Math.sign(targetCol - charCol)
+          const dRow = Math.sign(targetRow - charRow)
+          const key  = `${dCol >= 0 ? ' ' : ''}${dCol},${dRow >= 0 ? ' ' : ''}${dRow}`
+          const { row, flip } = DIR_MAP[key]
+          lastRow = row; lastFlip = flip
+          char.setFlipX(flip)
+          char.play(`walk-${row}`, true)
+          charCol += dCol
+          charRow += dRow
+          const { x: tx, y: ty } = tileCenter(charCol, charRow, ox, oy)
+          this.tweens.add({
+            targets: char, x: tx, y: ty,
+            duration: 320, ease: 'Linear',
+            onComplete: walkStep,
+          })
+        }
 
         // ── Dynamic layer: hover highlight + placed furniture ───────────────
         const furnG = this.add.graphics()
@@ -307,17 +393,23 @@ export default function PhaserRoom({ userId }) {
           scheduleSave()
         })
 
-        // Click an occupied tile to remove its item
         canvas.addEventListener('click', e => {
           const rect = canvas.getBoundingClientRect()
           const tile = screenToTile(e.clientX - rect.left, e.clientY - rect.top, ox, oy)
           if (!tile) return
           const key = `${tile.col},${tile.row}`
           if (placedItemsRef.current[key]) {
+            // Remove furniture on occupied-tile click
             delete placedItemsRef.current[key]
             redraw()
             scheduleSave()
+            return
           }
+          // Walk to empty floor tile
+          if (tile.col === charCol && tile.row === charRow) return
+          targetCol = tile.col
+          targetRow = tile.row
+          if (!isWalking) walkStep()
         })
 
         // Pointer cursor over occupied tiles
