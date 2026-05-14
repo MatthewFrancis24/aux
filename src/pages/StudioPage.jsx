@@ -25,8 +25,12 @@ export default function StudioPage({ onBack, user }) {
   const [draggingId, setDraggingId] = useState(null)
   const [vibe,       setVibe]       = useState(null)
   const [vibeOpen,   setVibeOpen]   = useState(false)
+  const [ctxMenu,    setCtxMenu]    = useState(null)  // { tileKey, x, y }
+  const [toast,      setToast]      = useState(null)  // string | null
   const dragImageRef = useRef(null)
   const vibeWrapRef  = useRef(null)
+  const ctxMenuRef   = useRef(null)
+  const actionRef    = useRef(null)
 
   /* ── Load saved vibe ── */
   useEffect(() => {
@@ -39,7 +43,7 @@ export default function StudioPage({ onBack, user }) {
       .then(({ data }) => { if (data?.vibe) setVibe(data.vibe) })
   }, [user?.id])
 
-  /* ── Close dropdown on outside click ── */
+  /* ── Close vibe dropdown on outside click ── */
   useEffect(() => {
     if (!vibeOpen) return
     function onDown(e) {
@@ -50,6 +54,60 @@ export default function StudioPage({ onBack, user }) {
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
   }, [vibeOpen])
+
+  /* ── Context menu: close on outside click or Escape ── */
+  useEffect(() => {
+    if (!ctxMenu) return
+    function onDown(e) {
+      if (ctxMenuRef.current && !ctxMenuRef.current.contains(e.target)) {
+        setCtxMenu(null)
+      }
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') {
+        setCtxMenu(null)
+        actionRef.current?.cancelMove?.()
+      }
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown',   onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown',   onKey)
+    }
+  }, [ctxMenu])
+
+  /* ── Furniture click from Phaser canvas ── */
+  function handleFurnitureClick(tileKey, clientX, clientY) {
+    const menuW = 160, menuH = 188
+    const x = clientX + menuW > window.innerWidth  ? clientX - menuW : clientX + 8
+    const y = clientY + menuH > window.innerHeight ? clientY - menuH : clientY + 8
+    setCtxMenu({ tileKey, x, y })
+  }
+
+  function showToast(msg) {
+    setToast(msg)
+    setTimeout(() => setToast(null), 2200)
+  }
+
+  /* ── Context menu actions ── */
+  function ctxMove() {
+    actionRef.current?.beginMove(ctxMenu.tileKey)
+    setCtxMenu(null)
+  }
+  function ctxRotate() {
+    actionRef.current?.rotateTile(ctxMenu.tileKey)
+    setCtxMenu(null)
+  }
+  function ctxDelete() {
+    actionRef.current?.deleteTile(ctxMenu.tileKey)
+    setCtxMenu(null)
+  }
+  function ctxSell() {
+    actionRef.current?.deleteTile(ctxMenu.tileKey)
+    setCtxMenu(null)
+    showToast('+10 coins')
+  }
 
   async function selectVibe(genre) {
     setVibe(genre)
@@ -134,7 +192,11 @@ export default function StudioPage({ onBack, user }) {
       <div className={styles.body}>
         {/* ── Isometric viewport ── */}
         <div className={styles.viewport}>
-          <PhaserRoom userId={user?.id} />
+          <PhaserRoom
+            userId={user?.id}
+            onFurnitureClick={handleFurnitureClick}
+            actionRef={actionRef}
+          />
         </div>
 
         {/* ── Furniture toolbar ── */}
@@ -160,6 +222,36 @@ export default function StudioPage({ onBack, user }) {
           </div>
         </aside>
       </div>
+
+      {/* ── Furniture context menu ── */}
+      {ctxMenu && (
+        <div
+          ref={ctxMenuRef}
+          className={styles.ctxMenu}
+          style={{ left: ctxMenu.x, top: ctxMenu.y }}
+        >
+          <button className={styles.ctxItem} onClick={ctxMove}>
+            <span className={styles.ctxIcon}><MoveIcon /></span>
+            Move
+          </button>
+          <button className={styles.ctxItem} onClick={ctxRotate}>
+            <span className={styles.ctxIcon}><RotateIcon /></span>
+            Rotate
+          </button>
+          <div className={styles.ctxDivider} />
+          <button className={`${styles.ctxItem} ${styles.ctxItemSell}`} onClick={ctxSell}>
+            <span className={styles.ctxIcon}><CoinIcon /></span>
+            Sell
+          </button>
+          <button className={`${styles.ctxItem} ${styles.ctxItemDanger}`} onClick={ctxDelete}>
+            <span className={styles.ctxIcon}><TrashIcon /></span>
+            Delete
+          </button>
+        </div>
+      )}
+
+      {/* ── Toast ── */}
+      {toast && <div className={styles.toast}>{toast}</div>}
 
       <MusicPlayer vibe={vibe} userId={user?.id} />
     </div>
@@ -238,4 +330,45 @@ function FurnitureIcon({ id }) {
     )
     default: return null
   }
+}
+
+function MoveIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 9l-3 3 3 3M19 9l3 3-3 3M9 5l3-3 3 3M9 19l3 3 3-3M12 12h.01" />
+      <line x1="2" y1="12" x2="22" y2="12" />
+      <line x1="12" y1="2" x2="12" y2="22" />
+    </svg>
+  )
+}
+
+function RotateIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 2v6h-6" />
+      <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+      <path d="M3 22v-6h6" />
+      <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+    </svg>
+  )
+}
+
+function CoinIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v1m0 8v1M9.5 9.5C9.5 8.4 10.6 8 12 8s2.5.4 2.5 1.5S13.4 11 12 12s-2.5 1-2.5 2.5S10.6 16 12 16s2.5-.4 2.5-1.5" />
+    </svg>
+  )
+}
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14H6L5 6" />
+      <path d="M10 11v6M14 11v6" />
+      <path d="M9 6V4h6v2" />
+    </svg>
+  )
 }

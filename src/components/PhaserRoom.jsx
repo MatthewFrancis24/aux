@@ -13,9 +13,8 @@ const BOX_F  = 0.72   // box footprint as a fraction of one tile
 const BOX_H  = 22     // box height in screen pixels
 
 // ── Colours ────────────────────────────────────────────────────────────────────
-const C_TILE_A         = 0x242424
-const C_TILE_B         = 0x2e2e2e
-const C_TILE_LINE      = 0x3a3a3a
+const C_TILE           = 0x1e1e1e
+const C_TILE_LINE      = 0x2a2a2a
 const C_WALL_BACK      = 0x2a2826
 const C_WALL_LEFT      = 0x252220
 const C_WALL_BACK_LINE = 0x3a3632
@@ -23,14 +22,22 @@ const C_WALL_LEFT_LINE = 0x353230
 const C_GOLD           = 0xd4af37
 
 const FURNITURE_COLORS = {
-  turntable: 0xd4af37,   // gold
-  speaker:   0x4a90d9,   // blue
-  couch:     0x4a8c5c,   // green
-  table:     0x8b6344,   // brown
-  lamp:      0xcfc030,   // yellow
-  plant:     0x2d7a42,   // dark green
-  shelf:     0xd4783c,   // orange
-  neon:      0xe040a0,   // pink
+  turntable: 0xd4af37,
+  speaker:   0x4a90d9,
+  couch:     0x4a8c5c,
+  table:     0x8b6344,
+  lamp:      0xcfc030,
+  plant:     0x2d7a42,
+  shelf:     0xd4783c,
+  neon:      0xe040a0,
+}
+
+// Furniture items that have real sprites.  key = Phaser texture key, frame = spritesheet
+// index (null = plain image), srcW/srcH = source frame dimensions used for auto-scale.
+const FURNITURE_SPRITES = {
+  couch:   { key: 'furn-couch',    frame: 0,    srcW: 192, srcH: 192 },
+  table:   { key: 'furn-table',    frame: null, srcW: 192, srcH: 192 },
+  speaker: { key: 'furn-showcase', frame: 0,    srcW: 128, srcH: 164 },
 }
 
 // ── Pure helpers ───────────────────────────────────────────────────────────────
@@ -149,8 +156,7 @@ function drawStaticRoom(g, ox, oy) {
       if (row < 0 || row >= GRID) continue
       const { x: cx, y: cy } = tileCenter(col, row, ox, oy)
       const pts  = diamond(cx, cy)
-      const fill = (col + row) % 2 === 0 ? C_TILE_A : C_TILE_B
-      g.fillStyle(fill, 1);  g.fillPoints(pts, true)
+      g.fillStyle(C_TILE, 1);  g.fillPoints(pts, true)
       g.lineStyle(1, C_TILE_LINE, 0.55); g.strokePoints(pts, true)
     }
   }
@@ -174,9 +180,9 @@ function drawStaticRoom(g, ox, oy) {
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
-export default function PhaserRoom({ userId }) {
+export default function PhaserRoom({ userId, onFurnitureClick, actionRef }) {
   const containerRef   = useRef(null)
-  const placedItemsRef = useRef({})   // "col,row" → furnitureId
+  const placedItemsRef = useRef({})   // "col,row" → furnitureId | { id, r }
   const hoverTileRef   = useRef(null) // { col, row } | null
   const redrawRef      = useRef(null) // () => void — set once scene is ready
   const saveTimerRef   = useRef(null) // debounce handle
@@ -237,9 +243,19 @@ export default function PhaserRoom({ userId }) {
         this.load.spritesheet('char-walk', '/Character0_Walk.png', {
           frameWidth: 460, frameHeight: 460,
         })
+        // Furniture sprites
+        this.load.spritesheet('furn-couch', '/RetroDiner_Furniture/Classic_Black/Sofa_192x192_Classic_Black.png', {
+          frameWidth: 192, frameHeight: 192,
+        })
+        this.load.image('furn-table', '/RetroDiner_Furniture/Classic_Black/Table_192x192_Classic_Black.png')
+        this.load.spritesheet('furn-showcase', '/RetroDiner_Furniture/BloodyNight/Showcase_164x164_BloodyNight.png', {
+          frameWidth: 128, frameHeight: 164,
+        })
       }
 
       create() {
+        const scene = this   // captured for use inside non-arrow callbacks
+
         // ── Static room layer (drawn once) ─────────────────────────────────
         const roomG = this.add.graphics()
         drawStaticRoom(roomG, ox, oy)
@@ -295,6 +311,7 @@ export default function PhaserRoom({ userId }) {
         char.setOrigin(0.5, 0.88)
         char.setScale(charScale)
         char.play('idle-0')
+        char.setDepth((charCol + charRow) * 10 + 5)
 
         const walkStep = () => {
           if (charCol === targetCol && charRow === targetRow) {
@@ -313,6 +330,7 @@ export default function PhaserRoom({ userId }) {
           char.play(`walk-${row}`, true)
           charCol += dCol
           charRow += dRow
+          char.setDepth((charCol + charRow) * 10 + 5)
           const { x: tx, y: ty } = tileCenter(charCol, charRow, ox, oy)
           this.tweens.add({
             targets: char, x: tx, y: ty,
@@ -321,13 +339,61 @@ export default function PhaserRoom({ userId }) {
           })
         }
 
-        // ── Dynamic layer: hover highlight + placed furniture ───────────────
+        // ── Dynamic layers ─────────────────────────────────────────────────
+        // furnG: ONLY the drag-hover highlight (redrawn on every dragover).
+        // furnObjects: individual Phaser objects per placed item (sprites or
+        //   per-item Graphics).  Recreated only when the layout changes.
         const furnG = this.add.graphics()
+        furnG.setDepth(1000)   // hover highlight always on top
+
+        let furnObjects = []
+        let movingKey   = null   // tile key of item being repositioned
+
+        function updateFurniture() {
+          furnObjects.forEach(o => o.destroy())
+          furnObjects = []
+
+          Object.entries(placedItemsRef.current)
+            .sort(([a], [b]) => {
+              const [ac, ar] = a.split(',').map(Number)
+              const [bc, br] = b.split(',').map(Number)
+              return (ac + ar) - (bc + br)
+            })
+            .forEach(([key, value]) => {
+              // value is either a bare string id (legacy) or { id, r } (with rotation)
+              const id       = typeof value === 'string' ? value : value.id
+              const rotation = typeof value === 'object' && value !== null ? (value.r ?? 0) : 0
+              const [col, row] = key.split(',').map(Number)
+              const { x: cx, y: cy } = tileCenter(col, row, ox, oy)
+              const depth = (col + row) * 10
+
+              const spriteDef = FURNITURE_SPRITES[id]
+              if (spriteDef) {
+                // Real sprite — scale so frame width ≈ one tile width
+                const img = spriteDef.frame !== null
+                  ? scene.add.image(cx, cy, spriteDef.key, spriteDef.frame)
+                  : scene.add.image(cx, cy, spriteDef.key)
+                // originY 0.88 places the visible furniture base at the tile centre,
+                // accounting for the transparent padding at the bottom of each sprite.
+                img.setOrigin(0.5, 0.88)
+                img.setScale(TILE_W / spriteDef.srcW)
+                img.setAngle(rotation)
+                img.setDepth(depth)
+                furnObjects.push(img)
+              } else {
+                // Fallback coloured box — own Graphics so depth works per-item
+                const g = scene.add.graphics()
+                g.setDepth(depth)
+                g.setAngle(rotation)
+                drawBox(g, cx, cy, FURNITURE_COLORS[id] ?? 0x888888)
+                furnObjects.push(g)
+              }
+            })
+        }
 
         function redraw() {
           furnG.clear()
-
-          // Hover highlight under any potential drop target
+          // Drag-over hover highlight (gold)
           const hover = hoverTileRef.current
           if (hover) {
             const { x: cx, y: cy } = tileCenter(hover.col, hover.row, ox, oy)
@@ -336,24 +402,49 @@ export default function PhaserRoom({ userId }) {
             furnG.lineStyle(2, C_GOLD, 0.85)
             furnG.strokePoints(diamond(cx, cy), true)
           }
-
-          // Placed furniture boxes — sorted back-to-front for correct depth
-          Object.entries(placedItemsRef.current)
-            .sort(([a], [b]) => {
-              const [ac, ar] = a.split(',').map(Number)
-              const [bc, br] = b.split(',').map(Number)
-              return (ac + ar) - (bc + br)
-            })
-            .forEach(([key, id]) => {
-              const [col, row] = key.split(',').map(Number)
-              const { x: cx, y: cy } = tileCenter(col, row, ox, oy)
-              drawBox(furnG, cx, cy, FURNITURE_COLORS[id] ?? 0x888888)
-            })
+          // Move-mode source highlight (blue)
+          if (movingKey) {
+            const [mc, mr] = movingKey.split(',').map(Number)
+            const { x: cx, y: cy } = tileCenter(mc, mr, ox, oy)
+            furnG.fillStyle(0x4a90d9, 0.22)
+            furnG.fillPoints(diamond(cx, cy), true)
+            furnG.lineStyle(2, 0x6ab0f5, 1)
+            furnG.strokePoints(diamond(cx, cy), true)
+          }
         }
 
-        // Expose redraw so the load effect can call it after data arrives
-        redrawRef.current = redraw
+        // Expose a combined refresh so the load effect triggers both
+        redrawRef.current = () => { updateFurniture(); redraw() }
+        updateFurniture()
         redraw()
+
+        // ── Imperative actions exposed to context menu ─────────────────────
+        if (actionRef) {
+          actionRef.current = {
+            deleteTile(key) {
+              delete placedItemsRef.current[key]
+              if (movingKey === key) movingKey = null
+              updateFurniture(); redraw(); scheduleSave()
+            },
+            rotateTile(key) {
+              const v  = placedItemsRef.current[key]
+              const id = typeof v === 'string' ? v : v.id
+              const r  = typeof v === 'object' && v !== null ? (v.r ?? 0) : 0
+              placedItemsRef.current[key] = { id, r: (r + 90) % 360 }
+              updateFurniture(); scheduleSave()
+            },
+            beginMove(key) {
+              movingKey = key
+              canvas.style.cursor = 'crosshair'
+              redraw()
+            },
+            cancelMove() {
+              movingKey = null
+              canvas.style.cursor = 'default'
+              redraw()
+            },
+          }
+        }
 
         // ── Canvas events ──────────────────────────────────────────────────
         const canvas = this.sys.game.canvas
@@ -389,6 +480,7 @@ export default function PhaserRoom({ userId }) {
             if (tile) placedItemsRef.current[`${tile.col},${tile.row}`] = id
           }
           hoverTileRef.current = null
+          updateFurniture()
           redraw()
           scheduleSave()
         })
@@ -398,11 +490,29 @@ export default function PhaserRoom({ userId }) {
           const tile = screenToTile(e.clientX - rect.left, e.clientY - rect.top, ox, oy)
           if (!tile) return
           const key = `${tile.col},${tile.row}`
-          if (placedItemsRef.current[key]) {
-            // Remove furniture on occupied-tile click
-            delete placedItemsRef.current[key]
+
+          // ── Move mode: resolve destination click ─────────────────────────
+          if (movingKey) {
+            if (key === movingKey) {
+              // Same tile → cancel
+              movingKey = null
+            } else if (!placedItemsRef.current[key]) {
+              // Empty tile → complete the move
+              placedItemsRef.current[key] = placedItemsRef.current[movingKey]
+              delete placedItemsRef.current[movingKey]
+              movingKey = null
+              updateFurniture()
+              scheduleSave()
+            }
+            canvas.style.cursor = 'default'
             redraw()
-            scheduleSave()
+            return
+          }
+
+          // ── Normal click ─────────────────────────────────────────────────
+          if (placedItemsRef.current[key]) {
+            // Open context menu — let React handle the action
+            onFurnitureClick?.(key, e.clientX, e.clientY)
             return
           }
           // Walk to empty floor tile
@@ -437,6 +547,7 @@ export default function PhaserRoom({ userId }) {
 
     return () => {
       clearTimeout(saveTimerRef.current)
+      if (actionRef) actionRef.current = null
       game.destroy(true)
     }
   }, [])
